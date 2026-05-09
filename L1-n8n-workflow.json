@@ -1,0 +1,263 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "7a8bebe5-3756-4a99-a543-e8488c063648",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "916e1191-c280-4ef1-b359-ca5d4d7493c5",
+      "name": "Webhook",
+      "webhookId": "7a8bebe5-3756-4a99-a543-e8488c063648"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are an L1 infrastructure support triage system.\nYour task is to read user support tickets and strictly classify them into one of the following three tags:\n\n\"DNS_ISSUE\" (If the issue is related to domains, unreachable websites, IPs, or DNS resolution)\n\n\"BILLING_ISSUE\" (If the issue is related to refunds, credit cards, billing, or renewals)\n\n\"UNKNOWN\" (If it does not fit the above two categories, or if you cannot determine the intent)\n\nRule: You must ONLY output one of these three exact string tags. Do not include any other text, punctuation, or explanations."
+            },
+            {
+              "content": "={{ $json.body.user_message }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "c4be377d-c4f3-4c0f-b299-66d6e540d6cb",
+      "name": "Message a model",
+      "credentials": {
+        "openAiApi": {
+          "id": "9jLhyHPQijen6yYw",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.output[0].content[0].text }}",
+                    "rightValue": "DNS_ISSUE",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "cc9ce36f-1665-4190-9281-6f2831119f4b"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "8072994a-5244-4093-813b-623c9894d5dd",
+                    "leftValue": "={{ $json.output[0].content[0].text }}",
+                    "rightValue": "BILLING_ISSUE",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        560,
+        0
+      ],
+      "id": "053d399f-2617-466c-85bd-1f83299439e9",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:3000/check-dns",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "domain",
+              "value": "={{ $('Webhook').item.json.body.domain }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        768,
+        -96
+      ],
+      "id": "11181051-9a82-4fd1-bf2b-0e12f4daf30d",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C0B2J4QKSQ5",
+          "mode": "list",
+          "cachedResultName": "n8n-test002"
+        },
+        "text": "=🚨 *[System Alert: DNS Anomaly Ticket]*\n* Target Domain: `{{ $('Webhook').item.json.body.domain }}`\n* User Report: {{ $('Webhook').item.json.body.user_message }}\n\n🤖 *Automated Diagnostics Result:*\n{{ $json.message }}",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        976,
+        -96
+      ],
+      "id": "5e7c6137-f93c-4043-bd90-8604d5236839",
+      "name": "Send a message",
+      "webhookId": "b9ef7c1f-965a-45ab-a827-21f2edff69ba",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "PGxvRmXUGxpkYjdc",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "Billing Issue <abc12345@gmail.com>",
+        "toEmail": "support@gmail.com",
+        "subject": "=[URGENT] Billing Issue Escalation - Ticket #{{ $('Webhook').item.json.body.ticket_id }}",
+        "emailFormat": "text",
+        "text": "=Hello Support Team,\n\nThe system has automatically intercepted a high-priority billing complaint that requires manual intervention.\n\nUser Domain: {{ $('Webhook').item.json.body.domain }}\nTicket Content:\n{{ $('Webhook').item.json.body.user_message }}\n\n--\nThis email was sent by the n8n-Testing L1 Automated Triage Bot.",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        768,
+        96
+      ],
+      "id": "39dcd76b-4708-4d92-9de1-ad1fcd007b5e",
+      "name": "Send an Email",
+      "webhookId": "e919b267-a6d9-4e43-9427-3267e693edf8",
+      "credentials": {
+        "smtp": {
+          "id": "NpAF9q0SUM3b6Oi5",
+          "name": "SMTP account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send an Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "971c239d-2555-4812-ae51-718f7403445c",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "6a5c0fb65f46a1b70fcb91df0156912b5118824688ded1f7a23676cd94448118"
+  },
+  "id": "Nd7mHpWaYQQEDoAE",
+  "tags": []
+}
